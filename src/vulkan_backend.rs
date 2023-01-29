@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use bytemuck::{Pod, Zeroable};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderingAttachmentInfo, RenderingInfo,
@@ -14,7 +13,7 @@ use vulkano::{
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::Instance,
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{StandardMemoryAllocator, GenericMemoryAllocator, FreeListAllocator},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -35,17 +34,8 @@ use vulkano::{
 
 use winit::window::Window;
 
-use crate::graphics::{
-    Color,
-    GraphicsBackend,
-};
+use crate::graphics::{Color, GraphicsBackend, Vertex, DrawCommand};
 
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
-    position: [f32; 2],
-}
 impl_vertex!(Vertex, position);
 
 pub struct VulkanBackend {
@@ -57,7 +47,7 @@ pub struct VulkanBackend {
     attachment_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     pipeline: Arc<GraphicsPipeline>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    memory_allocator: GenericMemoryAllocator<Arc<FreeListAllocator>>,
     recreate_swapchain: bool,
     clear_color: Color,
 }
@@ -175,28 +165,6 @@ impl VulkanBackend {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-        let vertices = [
-            Vertex {
-                position: [-0.5, -0.25],
-            },
-            Vertex {
-                position: [0.0, 0.5],
-            },
-            Vertex {
-                position: [0.25, -0.1],
-            },
-        ];
-        let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            &memory_allocator,
-            BufferUsage {
-                vertex_buffer: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            vertices,
-        )
-        .unwrap();
-
         mod vs {
             vulkano_shaders::shader! {
                 ty: "vertex",
@@ -266,7 +234,7 @@ impl VulkanBackend {
             command_buffer_allocator,
             queue,
             pipeline,
-            vertex_buffer,
+            memory_allocator,
             recreate_swapchain: false,
             clear_color,
         }
@@ -285,7 +253,7 @@ impl GraphicsBackend for VulkanBackend {
         self.clear_color.a = a;
     }
 
-    fn present(&mut self) {
+    fn present(&mut self, draw_command: DrawCommand) {
         if self.recreate_swapchain {
             let window = self
                 .surface
@@ -330,6 +298,30 @@ impl GraphicsBackend for VulkanBackend {
         )
         .unwrap();
 
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            &self.memory_allocator,
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            draw_command.vertices,
+        )
+        .unwrap();
+
+        let num_indices = draw_command.indices.len() as u32;
+
+        let index_buffer = CpuAccessibleBuffer::from_iter(
+            &self.memory_allocator,
+            BufferUsage {
+                index_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            draw_command.indices
+        )
+        .unwrap();
+
         builder
             .begin_rendering(RenderingInfo {
                 color_attachments: vec![Some(RenderingAttachmentInfo {
@@ -353,8 +345,9 @@ impl GraphicsBackend for VulkanBackend {
             .unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.pipeline.clone())
-            .bind_vertex_buffers(0, self.vertex_buffer.clone())
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .bind_index_buffer(index_buffer.clone())
+            .draw_indexed(num_indices, 1, 0, 0, 0)
             .unwrap()
             .end_rendering()
             .unwrap();

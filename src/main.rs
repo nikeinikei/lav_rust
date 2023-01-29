@@ -66,10 +66,20 @@ fn run_lav() {
             })
             .unwrap();
 
+        let graphics_clone = graphics.clone();
+        let graphics_rectangle = ctx
+            .create_function_mut(move |_, (x, y, w, h)| {
+                graphics_clone.lock().unwrap().rectangle(x, y, w, h);
+
+                Ok(())
+            })
+            .unwrap();
+
         graphics_mod
             .set("setClearColor", graphics_set_clear_color_function)
             .unwrap();
         graphics_mod.set("present", graphics_present).unwrap();
+        graphics_mod.set("rectangle", graphics_rectangle).unwrap();
 
         lav.set("graphics", graphics_mod).unwrap();
 
