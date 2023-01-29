@@ -49,7 +49,7 @@ fn run_lav() {
         let graphics_mod = ctx.create_table().unwrap();
 
         let graphics_clone = graphics.clone();
-        let graphics_set_clear_color_function = ctx
+        let graphics_set_clear_color = ctx
             .create_function_mut(move |_, (r, g, b, a)| {
                 graphics_clone.lock().unwrap().set_clear_color(r, g, b, a);
 
@@ -75,11 +75,41 @@ fn run_lav() {
             })
             .unwrap();
 
+        let graphics_clone = graphics.clone();
+        let graphics_origin = ctx
+            .create_function_mut(move |_, ()| {
+                graphics_clone.lock().unwrap().origin();
+
+                Ok(())
+            })
+            .unwrap();
+
+        let graphics_clone = graphics.clone();
+        let graphics_translate = ctx
+            .create_function_mut(move |_, (x, y)| {
+                graphics_clone.lock().unwrap().translate(x, y);
+
+                Ok(())
+            })
+            .unwrap();
+
+        let graphics_clone = graphics.clone();
+        let graphics_rotate = ctx
+            .create_function_mut(move |_, r| {
+                graphics_clone.lock().unwrap().rotate(r);
+
+                Ok(())
+            })
+            .unwrap();
+
         graphics_mod
-            .set("setClearColor", graphics_set_clear_color_function)
+            .set("setClearColor", graphics_set_clear_color)
             .unwrap();
         graphics_mod.set("present", graphics_present).unwrap();
         graphics_mod.set("rectangle", graphics_rectangle).unwrap();
+        graphics_mod.set("origin", graphics_origin).unwrap();
+        graphics_mod.set("translate", graphics_translate).unwrap();
+        graphics_mod.set("rotate", graphics_rotate).unwrap();
 
         lav.set("graphics", graphics_mod).unwrap();
 

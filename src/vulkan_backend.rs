@@ -21,7 +21,7 @@ use vulkano::{
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
-        GraphicsPipeline,
+        GraphicsPipeline, PipelineLayout, layout::{PipelineLayoutCreateInfo, PushConstantRange},
     },
     render_pass::{LoadOp, StoreOp},
     swapchain::{
@@ -29,12 +29,12 @@ use vulkano::{
         SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
-    Version,
+    Version, shader::ShaderStages,
 };
 
 use winit::window::Window;
 
-use crate::graphics::{Color, GraphicsBackend, Vertex, DrawCommand};
+use crate::graphics::{Color, GraphicsBackend, Vertex, DrawCommand, PushValues};
 
 impl_vertex!(Vertex, position);
 
@@ -46,6 +46,7 @@ pub struct VulkanBackend {
     queue: Arc<Queue>,
     attachment_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
     command_buffer_allocator: StandardCommandBufferAllocator,
+    pipeline_layout: Arc<PipelineLayout>,
     pipeline: Arc<GraphicsPipeline>,
     memory_allocator: GenericMemoryAllocator<Arc<FreeListAllocator>>,
     recreate_swapchain: bool,
@@ -171,8 +172,14 @@ impl VulkanBackend {
                 src: "
                     #version 450
                     layout(location = 0) in vec2 position;
+                    layout(push_constant) uniform constants
+                    {
+                        mat4 projection;
+                        mat4 transformation;
+                        vec4 color;
+                    } PushConstants;
                     void main() {
-                        gl_Position = vec4(position, 0.0, 1.0);
+                        gl_Position = PushConstants.projection * PushConstants.transformation * vec4(position, 0.0, 1.0);
                     }
                 "
             }
@@ -184,8 +191,14 @@ impl VulkanBackend {
                 src: "
                     #version 450
                     layout(location = 0) out vec4 f_color;
+                    layout(push_constant) uniform constants
+                    {
+                        mat4 projection;
+                        mat4 transformation;
+                        vec4 color;
+                    } PushConstants;
                     void main() {
-                        f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                        f_color = PushConstants.color * vec4(1.0, 1.0, 1.0, 1.0);
                     }
                 "
             }
@@ -193,6 +206,19 @@ impl VulkanBackend {
 
         let vs = vs::load(device.clone()).unwrap();
         let fs = fs::load(device.clone()).unwrap();
+
+        let push_constant_range = PushConstantRange {
+            stages: ShaderStages::all_graphics(),
+            offset: 0,
+            size: std::mem::size_of::<PushValues>() as u32,
+        };
+
+        let pipeline_layout_create_info = PipelineLayoutCreateInfo {
+            push_constant_ranges: vec![push_constant_range],
+            ..Default::default()
+        };
+
+        let pipeline_layout = PipelineLayout::new(device.clone(), pipeline_layout_create_info).unwrap();
 
         let pipeline = GraphicsPipeline::start()
             .render_pass(PipelineRenderingCreateInfo {
@@ -204,7 +230,7 @@ impl VulkanBackend {
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .build(device.clone())
+            .with_pipeline_layout(device.clone(), pipeline_layout.clone())
             .unwrap();
 
         let mut viewport = Viewport {
@@ -234,6 +260,7 @@ impl VulkanBackend {
             command_buffer_allocator,
             queue,
             pipeline,
+            pipeline_layout,
             memory_allocator,
             recreate_swapchain: false,
             clear_color,
@@ -253,7 +280,7 @@ impl GraphicsBackend for VulkanBackend {
         self.clear_color.a = a;
     }
 
-    fn present(&mut self, draw_command: DrawCommand) {
+    fn present(&mut self, draw_commands: Vec<DrawCommand>) {
         if self.recreate_swapchain {
             let window = self
                 .surface
@@ -298,30 +325,6 @@ impl GraphicsBackend for VulkanBackend {
         )
         .unwrap();
 
-        let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            &self.memory_allocator,
-            BufferUsage {
-                vertex_buffer: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            draw_command.vertices,
-        )
-        .unwrap();
-
-        let num_indices = draw_command.indices.len() as u32;
-
-        let index_buffer = CpuAccessibleBuffer::from_iter(
-            &self.memory_allocator,
-            BufferUsage {
-                index_buffer: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            draw_command.indices
-        )
-        .unwrap();
-
         builder
             .begin_rendering(RenderingInfo {
                 color_attachments: vec![Some(RenderingAttachmentInfo {
@@ -344,11 +347,42 @@ impl GraphicsBackend for VulkanBackend {
             })
             .unwrap()
             .set_viewport(0, [self.viewport.clone()])
-            .bind_pipeline_graphics(self.pipeline.clone())
-            .bind_vertex_buffers(0, vertex_buffer.clone())
-            .bind_index_buffer(index_buffer.clone())
-            .draw_indexed(num_indices, 1, 0, 0, 0)
-            .unwrap()
+            .bind_pipeline_graphics(self.pipeline.clone());
+
+        for draw_command in draw_commands {
+            let vertex_buffer = CpuAccessibleBuffer::from_iter(
+                &self.memory_allocator,
+                BufferUsage {
+                    vertex_buffer: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                draw_command.vertices,
+            )
+            .unwrap();
+    
+            let num_indices = draw_command.indices.len() as u32;
+    
+            let index_buffer = CpuAccessibleBuffer::from_iter(
+                &self.memory_allocator,
+                BufferUsage {
+                    index_buffer: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                draw_command.indices
+            )
+            .unwrap();
+
+            builder
+                .bind_vertex_buffers(0, vertex_buffer.clone())
+                .bind_index_buffer(index_buffer.clone())
+                .push_constants(self.pipeline_layout.clone(), 0, draw_command.push_values)
+                .draw_indexed(num_indices, 1, 0, 0, 0)
+                .unwrap();
+        }
+
+        builder
             .end_rendering()
             .unwrap();
 
