@@ -16,7 +16,7 @@ use winit::{
 };
 
 mod graphics;
-mod gfx;
+mod vulkan_backend;
 
 fn run_lav() {
     let event_loop = EventLoop::new();
@@ -38,10 +38,9 @@ fn run_lav() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let graphics = Arc::new(Mutex::new(graphics::Graphics::new(
-        instance.clone(),
-        surface.clone(),
-    )));
+    let backend = vulkan_backend::VulkanBackend::new(instance.clone(), surface.clone());
+
+    let graphics = Arc::new(Mutex::new(graphics::Graphics::new(backend)));
 
     let lua = rlua::Lua::new();
     lua.context(|ctx| {
