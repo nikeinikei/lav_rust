@@ -102,6 +102,18 @@ fn run_lav() {
             })
             .unwrap();
 
+        let graphics_clone = graphics.clone();
+        let graphics_set_color = ctx
+            .create_function_mut(move |_, (r, g, b, a)| {
+                graphics_clone
+                    .lock()
+                    .unwrap()
+                    .set_color(graphics::Color { r, g, b, a });
+
+                Ok(())
+            })
+            .unwrap();
+
         graphics_mod
             .set("setClearColor", graphics_set_clear_color)
             .unwrap();
@@ -110,6 +122,7 @@ fn run_lav() {
         graphics_mod.set("origin", graphics_origin).unwrap();
         graphics_mod.set("translate", graphics_translate).unwrap();
         graphics_mod.set("rotate", graphics_rotate).unwrap();
+        graphics_mod.set("setColor", graphics_set_color).unwrap();
 
         lav.set("graphics", graphics_mod).unwrap();
 

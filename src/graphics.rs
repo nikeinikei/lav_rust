@@ -149,6 +149,12 @@ impl<T: GraphicsBackend> Graphics<T> {
         }
     }
 
+    pub fn set_color(&mut self, color: Color) {
+        self.flush_batched_draws(); 
+
+        self.color = color;
+    }
+
     pub fn origin(&mut self) {
         self.flush_batched_draws();
 
