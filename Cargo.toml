@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-vulkano = "0.32.1"
+vulkano = "0.32.3"
 rlua = "0.19.4"
 winit = "0.27.5"
 vulkano-win = "0.32.0"

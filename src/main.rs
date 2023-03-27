@@ -206,22 +206,17 @@ fn run_lav() {
             Event::RedrawEventsCleared => {
                 lua.context(|ctx| {
                     if let Ok(lav) = ctx.globals().get::<&str, Table>("lav") {
+                        if let Ok(draw) = lav.get::<&str, Function>("update") {
+                            timer.lock().unwrap().step();
+                            draw.call::<f64, ()>(timer.lock().unwrap().get_delta()).unwrap();
+                        }
                         if let Ok(draw) = lav.get::<&str, Function>("draw") {
                             draw.call::<(), ()>(()).unwrap();
                         }
                     }
                 });
             }
-            _ => {
-                lua.context(|ctx| {
-                    if let Ok(lav) = ctx.globals().get::<&str, Table>("lav") {
-                        if let Ok(draw) = lav.get::<&str, Function>("update") {
-                            timer.lock().unwrap().step();
-                            draw.call::<f64, ()>(timer.lock().unwrap().get_delta()).unwrap();
-                        }
-                    }
-                })
-            }
+            _ => ()
         }
     });
 }
