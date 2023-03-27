@@ -188,7 +188,7 @@ fn run_lav() {
     });
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::Poll;
 
         match event {
             Event::WindowEvent {
@@ -207,12 +207,21 @@ fn run_lav() {
                 lua.context(|ctx| {
                     if let Ok(lav) = ctx.globals().get::<&str, Table>("lav") {
                         if let Ok(draw) = lav.get::<&str, Function>("draw") {
-                            draw.call::<_, ()>(()).unwrap();
+                            draw.call::<(), ()>(()).unwrap();
                         }
                     }
                 });
             }
-            _ => (),
+            _ => {
+                lua.context(|ctx| {
+                    if let Ok(lav) = ctx.globals().get::<&str, Table>("lav") {
+                        if let Ok(draw) = lav.get::<&str, Function>("update") {
+                            timer.lock().unwrap().step();
+                            draw.call::<f64, ()>(timer.lock().unwrap().get_delta()).unwrap();
+                        }
+                    }
+                })
+            }
         }
     });
 }
