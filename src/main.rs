@@ -4,42 +4,21 @@ use std::{
 };
 
 use rlua::{Function, Table};
-use vulkano::{
-    instance::{Instance, InstanceCreateInfo},
-    VulkanLibrary,
-};
-use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 mod graphics;
 mod timer;
-mod vulkan_backend;
+mod wgpu_backend;
 
-fn run_lav() {
+async fn run_lav() {
     let event_loop = EventLoop::new();
 
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = vulkano_win::required_extensions(&library);
+    let window = winit::window::Window::new(&event_loop).unwrap();
 
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            enabled_extensions: required_extensions,
-            enumerate_portability: true,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
-
-    let backend = vulkan_backend::VulkanBackend::new(instance.clone(), surface.clone());
+    let backend: wgpu_backend::WgpuBackend = wgpu_backend::WgpuBackend::new(window).await;
 
     let graphics = Arc::new(Mutex::new(graphics::Graphics::new(backend)));
     let timer = Arc::new(Mutex::new(timer::Timer::new()));
@@ -198,10 +177,10 @@ fn run_lav() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent {
-                event: WindowEvent::Resized(_),
+                event: WindowEvent::Resized(size),
                 ..
             } => {
-                graphics.lock().unwrap().request_swapchain_recreation();
+                graphics.lock().unwrap().request_swapchain_recreation(size.width, size.height);
             }
             Event::RedrawEventsCleared => {
                 lua.context(|ctx| {
@@ -222,5 +201,5 @@ fn run_lav() {
 }
 
 fn main() {
-    run_lav();
+    pollster::block_on(run_lav());
 }

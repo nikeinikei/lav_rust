@@ -1,18 +1,16 @@
 use std::ops::Mul;
 
-use bytemuck::{Pod, Zeroable};
-
 #[repr(C)]
-#[derive(Clone, Copy, Zeroable, Pod)]
+#[derive(Clone, Copy)]
 pub struct Color {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub a: f32,
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
+    pub a: f64,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Zeroable, Pod)]
+#[derive(Clone, Copy)]
 pub struct Matrix4 {
     pub data: [f32; 16],
 }
@@ -100,13 +98,13 @@ impl Mul for Matrix4 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Vertex {
     pub position: [f32; 2],
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Zeroable, Pod)]
+#[derive(Clone, Copy)]
 pub struct PushValues {
     projection: Matrix4,
     transformation: Matrix4,
@@ -121,8 +119,8 @@ pub struct DrawCommand {
 }
 
 pub trait GraphicsBackend {
-    fn request_swapchain_recreation(&mut self);
-    fn set_clear_color(&mut self, r: f32, g: f32, b: f32, a: f32);
+    fn request_swapchain_recreation(&mut self, new_width: u32, new_height: u32);
+    fn set_clear_color(&mut self, r: f64, g: f64, b: f64, a: f64);
     fn present(&mut self, draw_commands: Vec<DrawCommand>);
 }
 
@@ -145,7 +143,7 @@ impl<T: GraphicsBackend> Graphics<T> {
             indices: Vec::new(),
             transformation_stack,
             draw_commands: Vec::new(),
-            color: Color { r: 1_f32, g: 1_f32, b: 1_f32, a: 1_f32 },
+            color: Color { r: 1_f64, g: 1_f64, b: 1_f64, a: 1_f64 },
         }
     }
 
@@ -201,11 +199,11 @@ impl<T: GraphicsBackend> Graphics<T> {
         }
     }
 
-    pub fn request_swapchain_recreation(&mut self) {
-        self.backend.request_swapchain_recreation();
+    pub fn request_swapchain_recreation(&mut self, new_width: u32, new_height: u32) {
+        self.backend.request_swapchain_recreation(new_width, new_height);
     }
 
-    pub fn set_clear_color(&mut self, r: f32, g: f32, b: f32, a: f32) {
+    pub fn set_clear_color(&mut self, r: f64, g: f64, b: f64, a: f64) {
         self.backend.set_clear_color(r, g, b, a);
     }
 
